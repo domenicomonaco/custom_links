@@ -1,0 +1,360 @@
+I file custom_links/custom_links.admin.inc e custom_links_mod/custom_links.admin.inc sono identici
+diff -ursN custom_links/custom_links.extract.admin.inc custom_links_mod/custom_links.extract.admin.inc
+--- custom_links/custom_links.extract.admin.inc	1970-01-01 01:00:00.000000000 +0100
++++ custom_links_mod/custom_links.extract.admin.inc	2009-12-14 19:46:00.000000000 +0100
+@@ -0,0 +1,43 @@
++<?php
++// $Id$
++
++/**
++ * 
++ * @file
++ * Modified by Domenico Monaco / info@kiuz.it / www.kiuz.it
++ * Modified version of custom_links by eaton.
++ * This version adding some feature to customize links of nodes, in example 
++ * you can disable or extrating in bulk or single mode custom/standard links
++ * with variable key es. node_read_more, statistics_counter, comment_add
++ * 
++ */
++
++function custom_links_admin_settings() {
++
++$options = node_get_types('names');
++
++  $nf = 'custom_links_extract_bulkmode';
++  $form[$nf] = array(
++    '#type' => 'checkboxes',
++    '#title' => 'Bulk\'s mode extracting',
++    '#options' => $options,
++    '#default_value' => variable_get($nf, ''),
++    '#description' => 'Select the "node type" to extract all variables.',
++  );
++  
++$optionst = array_keys($options);
++
++  $nfg = 'custom_links_extract_singlemode';
++  foreach ($optionst as $ntypes) {
++    $form[$nfg . '_' . $ntypes] = array(
++      '#type' => 'textarea',
++      '#title' => 'list\'s mode extracting ' . $ntypes,
++      '#default_value' => variable_get($nfg . '_' . $ntypes, '' ), 
++      '#size' => '90',
++      '#description' => 'Lists the variable\'s keys separated by commas or each rows. (ES. node_read_more, statistics_counter, taxonomy_term_TID, comment_add) All links that you extract in this section have a standard name "links_*" in example if you extract "statistics_counter" you can use in a node.tpl.php ther variable $links_statistics_counter',
++      '#disabled' => FALSE
++      );
++  }
++
++return system_settings_form($form);
++}
+I file custom_links/custom_links.info e custom_links_mod/custom_links.info sono identici
+diff -ursN custom_links/custom_links.install custom_links_mod/custom_links.install
+--- custom_links/custom_links.install	2008-01-27 10:16:01.000000000 +0100
++++ custom_links_mod/custom_links.install	2009-12-14 19:07:50.000000000 +0100
+@@ -1,5 +1,16 @@
+ <?php
+-// $Id: custom_links.install,v 1.2 2008/01/27 09:16:01 eaton Exp $
++// $Id$
++
++/**
++ * 
++ * @file
++ * Modified by Domenico Monaco / info@kiuz.it / www.kiuz.it
++ * Modified version of custom_links by eaton.
++ * This version adding some feature to customize links of nodes, in example 
++ * you can disable or extrating in bulk or single mode custom/standard links
++ * with variable key es. node_read_more, statistics_counter, comment_add
++ * 
++ */
+ 
+ /**
+  * Implementation of hook_install().
+@@ -111,4 +122,17 @@
+ 
+ function custom_links_uninstall() {
+   drupal_uninstall_schema('custom_links');
++  
++  $options = node_get_types('names');
++  $optionst = array_keys($options);
++  
++  $nfg = 'custom_links_extract_singlemode';
++  foreach ($optionst as $ntypes) {
++    variable_del($nfg . '_' . $ntypes, '' );
++  }
++  
++  $nfg = 'custom_links_unset_singlemode';
++  foreach ($optionst as $ntypes) {
++    variable_del($nfg . '_' . $ntypes, '' );
++  }
+ }
+diff -ursN custom_links/custom_links.module custom_links_mod/custom_links.module
+--- custom_links/custom_links.module	2008-01-27 10:16:01.000000000 +0100
++++ custom_links_mod/custom_links.module	2009-12-14 19:08:17.000000000 +0100
+@@ -1,21 +1,76 @@
+ <?php
+-// $Id: custom_links.module,v 1.5 2008/01/27 09:16:01 eaton Exp $
++// $Id:$
+ 
+ /**
++ * 
++ * @file
++ * Modified by Domenico Monaco / info@kiuz.it / www.kiuz.it
++ * Modified version of custom_links by eaton.
++ * This version adding some feature to customize links of nodes, in example 
++ * you can disable or extrating in bulk or single mode custom/standard links
++ * with variable key es. node_read_more, statistics_counter, comment_add
++ * 
++ */
++ 
++/**
+  * Implementation of hook_menu().
+  */
+ function custom_links_menu() {
+   $items = array();
++  
++// This is the minimum information you can provide for a menu item.
+ 
+-  $items['admin/build/custom_links'] = array(
++  $items['admin/build/custom_links']   =  array(
+     'title' => 'Custom links',
+     'description' => 'Add custom links to specific content types.',
+     'page callback' => 'custom_links_page',
+     'access callback' => 'user_access',
+     'access arguments' => array('administer custom links'),
+     'file' => 'custom_links.admin.inc',
++    'type' => MENU_NORMAL_ITEM
++  );
++
++
++  $items['admin/build/custom_links/list'] = array(
++    'title' => 'List',
++    'type' => MENU_DEFAULT_LOCAL_TASK,
++    'weight' => -10,
++  );
++
++
++
++  $items['admin/build/custom_links/unset']  =  array(
++    'title' => 'Unset', 
++    'description' => 'Unsetting Links Variable', 
++    'page callback' => 'drupal_get_form', 
++    'page arguments' => array('custom_links_admin_settings'), 
++    'access arguments' => array('adminster site configuration'), 
++    'type' => MENU_LOCAL_TASK, 
++    'file' => 'custom_links.unset.admin.inc', 
++    'weight' => 1
++  );
++
++  $items['admin/build/custom_links/extract']  =  array(
++    'title' => 'Extract', 
++    'description' => 'Extracting Links Variable', 
++    'page callback' => 'drupal_get_form', 
++    'page arguments' => array('custom_links_admin_settings'), 
++    'access arguments' => array('adminster site configuration'), 
++    'type' => MENU_LOCAL_TASK, 
++    'file' => 'custom_links.extract.admin.inc', 
++    'weight' => 10
+   );
+ 
++  $items['admin/build/custom_links/addlink'] = array(
++    'title' => 'Add',
++    'type' => MENU_LOCAL_TASK,
++    'page callback' => 'drupal_get_form',
++    'page arguments' => array('custom_links_form'),
++    'access callback' => 'user_access',
++    'access arguments' => array('administer custom links'),
++    'file' => 'custom_links.admin.inc',
++  );
++  
+   $items['admin/build/custom_links/add'] = array(
+     'title' => 'Add custom breadcrumb',
+     'type' => MENU_CALLBACK,
+@@ -47,12 +102,21 @@
+   return $items;
+ }
+ 
++
++/**
++ * Implementation of hook_link().
++ * 
++ * Overriding links render
++ */
+ function custom_links_link($type, $node = NULL, $teaser = FALSE) {
+   if ($type == 'node') {
+     return _custom_links_build_links($node, $teaser);
+   }
+ }
+ 
++/**
++ * Implementation of hook_perm().
++ */
+ function custom_links_perm() {
+   return array('administer custom links');
+ }
+@@ -160,3 +224,119 @@
+ function theme_custom_links_block($links) {
+   return theme('links', $links);
+ }
++
++/*<Links Hack - New Feature>*/
++
++/**
++ * Implementation Hook_link_alter()
++ */
++function custom_links_link_alter(&$links,  &$node) {
++
++  //check Extract mode: Bulk or single
++  $modextract = _custom_links_config('mode', 'extract', $node->type);
++  
++  if ($modextract == 'bulk') {
++    $svarextract = array_keys($links);
++    foreach ($svarextract as $exsvar) {
++      $node->custom_links['extvar'][$exsvar] = $links[$exsvar];
++    }
++  }
++
++  if ($modextract = 'single') {
++    $svarextract = _custom_links_config('singlemode', 'extract', $node->type);
++    foreach ($svarextract as $exsvar) {
++      if (isset($links[$exsvar])) {
++        $node->custom_links['extvar'][$exsvar] = $links[$exsvar];
++      }
++    }
++  }
++
++  //check Mode unset: Bulk or Single
++  $modeunest = _custom_links_config('mode', 'unset', $node->type);
++  
++  if ($modeunest == 'bulk') {
++    $nliu  =  array_keys($links);
++    foreach ($nliu as $unvar) {
++      unset($links[$unvar]);
++    }
++  }
++
++  if ($modeunest == 'single') {
++    $svarunset = _custom_links_config('singlemode', 'unset', $node->type);
++      foreach ($svarunset as $svar) {
++        unset($links[$svar]);
++      }
++  }
++}
++
++/**
++ * Implementation Hook_preprocess_node()
++ */
++function custom_links_preprocess_node(&$variables) {
++
++  // check size of variable. if  is > =  1 is an Array
++  if (($chks = sizeof($variables['custom_links']['extvar'])) >=  1) {
++    //if  is an array we can use rhis function - array_keys - to extract key
++    $keys = array_keys($variables['custom_links']['extvar']);
++      //loop to process and creato new variable
++      foreach ($keys as $key) {
++        //make new variable with standard pattern name
++        $variables['links_' . $key] = _htmproc($variables['custom_links']['extvar'][$key]);
++        //unset variable,  is not essencial but clear the nodeObject
++        unset($variables['custom_links']['extvar'][$key]);
++        //print_r($variables['links_' . $key]); //debug
++      }
++  }
++  
++  return $variables;
++}
++
++/**
++ * Custom function to render link or  not link output
++ */
++function _htmproc($inh) {
++  //check if  is a link
++  if (!(isset($inh['href']))) {
++    //is not link print only title text
++    return $inh['title'];
++  }
++
++  $output = l($inh['title'],  $inh['href'],  $inh);
++  return $output;
++}
++
++/**
++ * Custom function/intarface to "ask" changes, with this you can add featur without
++ * change oleder feature of "links hack" features adding
++ */
++function _custom_links_config($ask, $act, $cnode) {
++  
++  $output = array(); //variable to output
++  
++  //check "ask" variable
++  //Idea: same function of different output, respond to "how do you asking?"
++  if ($ask == 'mode') {
++    $ifbulk = variable_get('custom_links_' . $act . '_bulkmode', '');
++      if ($ifbulk[$cnode] == '0') {
++        $modeout = 'single';
++      }
++      if ($ifbulk[$cnode]!= '0') {
++        $modeout = 'bulk';
++      }
++    $output = $modeout;
++  }
++  
++  if ($ask == 'singlemode') {
++    $str = variable_get('custom_links_' . $act . '_' . $ask . '_' . $cnode, '');
++    $order   = array("\r\n", "\n", "\r", " ", ", ");
++    $replace = ',';
++    $cleanstr= str_replace($order, $replace, $str);    
++            
++    $ifbulk = explode(',', $cleanstr);
++    $output = $ifbulk;
++  }
++  
++  return $output;
++}
++//END LINKS HACK MODULE
++
+diff -ursN custom_links/custom_links.unset.admin.inc custom_links_mod/custom_links.unset.admin.inc
+--- custom_links/custom_links.unset.admin.inc	1970-01-01 01:00:00.000000000 +0100
++++ custom_links_mod/custom_links.unset.admin.inc	2009-12-14 19:07:33.000000000 +0100
+@@ -0,0 +1,43 @@
++<?php
++// $Id$
++
++/**
++ * 
++ * @file
++ * Modified by Domenico Monaco / info@kiuz.it / www.kiuz.it
++ * Modified version of custom_links by eaton.
++ * This version adding some feature to customize links of nodes, in example 
++ * you can disable or extrating in bulk or single mode custom/standard links
++ * with variable key es. node_read_more, statistics_counter, comment_add
++ * 
++ */
++
++function custom_links_admin_settings() {
++
++$options = node_get_types('names');
++
++  $nf='custom_links_unset_bulkmode';
++  $form[$nf] = array(
++    '#type' => 'checkboxes',
++    '#title' => 'Bulk\'s mode unsetting',
++    '#options' => $options,
++    '#default_value' => variable_get($nf, ''),
++    '#description' => 'Select the "node type" to disable all variables.',
++  );
++  
++$optionst = array_keys($options);
++  
++  $nfg='custom_links_unset_singlemode';
++  foreach ($optionst as $ntypes) {
++    $form[$nfg . '_' . $ntypes] = array(
++      '#type' => 'textarea',
++      '#title' => 'list\'s mode unsetting ' . $ntypes,
++      '#default_value' => variable_get($nfg . '_' . $ntypes, '' ), 
++      '#size' => '90',
++      '#description' => 'Lists the variable\'s keys separated by commas or each rows. (ES. node_read_more, statistics_counter, taxonomy_term_TID, comment_add)',
++      '#disabled' => FALSE
++      );
++  }
++
++return system_settings_form($form);
++}
+I file custom_links/LICENSE.txt e custom_links_mod/LICENSE.txt sono identici

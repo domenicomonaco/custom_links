@@ -1,0 +1,342 @@
+<?php
+// $Id:$
+
+/**
+ * 
+ * @file
+ * Modified by Domenico Monaco / info@kiuz.it / www.kiuz.it
+ * Modified version of custom_links by eaton.
+ * This version adding some feature to customize links of nodes, in example 
+ * you can disable or extrating in bulk or single mode custom/standard links
+ * with variable key es. node_read_more, statistics_counter, comment_add
+ * 
+ */
+ 
+/**
+ * Implementation of hook_menu().
+ */
+function custom_links_menu() {
+  $items = array();
+  
+// This is the minimum information you can provide for a menu item.
+
+  $items['admin/build/custom_links']   =  array(
+    'title' => 'Custom links',
+    'description' => 'Add custom links to specific content types.',
+    'page callback' => 'custom_links_page',
+    'access callback' => 'user_access',
+    'access arguments' => array('administer custom links'),
+    'file' => 'custom_links.admin.inc',
+    'type' => MENU_NORMAL_ITEM
+  );
+
+
+  $items['admin/build/custom_links/list'] = array(
+    'title' => 'List',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+
+
+  $items['admin/build/custom_links/unset']  =  array(
+    'title' => 'Unset', 
+    'description' => 'Unsetting Links Variable', 
+    'page callback' => 'drupal_get_form', 
+    'page arguments' => array('custom_links_admin_settings'), 
+    'access arguments' => array('adminster site configuration'), 
+    'type' => MENU_LOCAL_TASK, 
+    'file' => 'custom_links.unset.admin.inc', 
+    'weight' => 1
+  );
+
+  $items['admin/build/custom_links/extract']  =  array(
+    'title' => 'Extract', 
+    'description' => 'Extracting Links Variable', 
+    'page callback' => 'drupal_get_form', 
+    'page arguments' => array('custom_links_admin_settings'), 
+    'access arguments' => array('adminster site configuration'), 
+    'type' => MENU_LOCAL_TASK, 
+    'file' => 'custom_links.extract.admin.inc', 
+    'weight' => 10
+  );
+
+  $items['admin/build/custom_links/addlink'] = array(
+    'title' => 'Add',
+    'type' => MENU_LOCAL_TASK,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_links_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer custom links'),
+    'file' => 'custom_links.admin.inc',
+  );
+  
+  $items['admin/build/custom_links/add'] = array(
+    'title' => 'Add custom breadcrumb',
+    'type' => MENU_CALLBACK,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_links_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer custom links'),
+    'file' => 'custom_links.admin.inc',
+  );
+
+  $items['admin/build/custom_links/edit'] = array(
+    'title' => 'Edit custom breadcrumb',
+    'type' => MENU_CALLBACK,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_links_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer custom links'),
+    'file' => 'custom_links.admin.inc',
+  );
+
+  return $items;
+}
+
+function custom_links_theme() {
+  $items = array();
+  $items['custom_links_block'] = array(
+    'arguments' => array('links' => array()),
+  );
+  return $items;
+}
+
+
+/**
+ * Implementation of hook_link().
+ * 
+ * Overriding links render
+ */
+function custom_links_link($type, $node = NULL, $teaser = FALSE) {
+  if ($type == 'node') {
+    return _custom_links_build_links($node, $teaser);
+  }
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function custom_links_perm() {
+  return array('administer custom links');
+}
+
+/**
+ * Implementation of hook_block().
+ *
+ * Generates a block with links for the current node.
+ */
+function custom_links_block($op = 'list', $delta = 0) {
+  if ($op == 'list') {
+    $blocks[0]['info'] = t('Custom node links');
+    return $blocks;
+  }
+  else if ($op == 'view' && arg(0) == 'node' && is_numeric(arg(1))) {
+    $node = node_load(arg(1));
+    $links = _custom_links_build_links($node, FALSE, TRUE);
+    if (count($links)) {
+      $block['subject'] = t('Links');
+      $block['content'] = theme('custom_links_block', $links);
+      return $block;
+    }
+  }
+}
+
+function _custom_links_build_links($node, $teaser = FALSE, $block = FALSE) {
+  $links = array();
+  $custom_links = _custom_links_load_all_links();
+
+  foreach ($custom_links as $link) {
+    if (($block && $link->display != 3) || (!$block && $link->display == 3)) {
+      continue;
+    }
+    if (($link->display == 0 && $teaser) || ($link->display == 1 && !$teaser)) {
+      continue;
+    }
+    if ($link->node_type && $node->type != $link->node_type) {
+      continue;
+    }
+    if ($link->viewer_perm && !user_access($link->viewer_perm)) {
+      continue;
+    }
+    if ($link->author_perm) {
+      $author = user_load(array('uid' => $node->uid));
+      if (!user_access($link->author_perm, $author)) {
+        continue;
+      }
+    }
+
+    $links[$link->link_key]['title'] = $link->title;
+    if (!empty($link->path)) {
+      $links[$link->link_key]['href'] = $link->path;
+    }
+    if (!empty($link->query)) {
+      $links[$link->link_key]['query'] = $link->query;
+    }
+    if (!empty($link->fragment)) {
+      $links[$link->link_key]['fragment'] = $link->fragment;
+    }
+
+    if (module_exists('token')) {
+      $links[$link->link_key] = token_replace($links[$link->link_key], 'node', $node);
+    }
+
+    $links[$link->link_key]['html'] = $link->check_html;
+  }
+  return $links;
+}
+
+function _custom_links_load_link($lid) {
+  $sql = 'SELECT * FROM {custom_link} WHERE lid = %d';
+  $result = db_query($sql, $lid);
+  $link = db_fetch_object($result);
+  return $link;
+}
+
+function _custom_links_load_all_links($refresh = FALSE) {
+  static $links;
+  if ($refresh || !isset($links)) {
+    $sql = 'SELECT * FROM {custom_link}';
+    $result = db_query($sql);
+
+    $links = array();
+    while($link = db_fetch_object($result)) {
+      $links[] = $link;
+    }
+  }
+  return $links;
+}
+
+function _custom_links_save_link($link = NULL) {
+  if (isset($link->lid)) {
+    drupal_write_record('custom_link', $link, 'lid');
+  }
+  else {
+    drupal_write_record('custom_link', $link);
+  }
+}
+
+function _custom_links_delete_link($lid) {
+  $sql = 'DELETE FROM {custom_link} WHERE lid = %d';
+  db_query($sql, $lid);
+}
+
+function theme_custom_links_block($links) {
+  return theme('links', $links);
+}
+
+/*<Links Hack - New Feature>*/
+
+/**
+ * Implementation Hook_link_alter()
+ */
+function custom_links_link_alter(&$links,  &$node) {
+
+  //check Extract mode: Bulk or single
+  $modextract = _custom_links_config('mode', 'extract', $node->type);
+  
+  if ($modextract == 'bulk') {
+    $svarextract = array_keys($links);
+    foreach ($svarextract as $exsvar) {
+      $node->custom_links['extvar'][$exsvar] = $links[$exsvar];
+    }
+  }
+
+  if ($modextract = 'single') {
+    $svarextract = _custom_links_config('singlemode', 'extract', $node->type);
+    foreach ($svarextract as $exsvar) {
+      if (isset($links[$exsvar])) {
+        $node->custom_links['extvar'][$exsvar] = $links[$exsvar];
+      }
+    }
+  }
+
+  //check Mode unset: Bulk or Single
+  $modeunest = _custom_links_config('mode', 'unset', $node->type);
+  
+  if ($modeunest == 'bulk') {
+    $nliu  =  array_keys($links);
+    foreach ($nliu as $unvar) {
+      unset($links[$unvar]);
+    }
+  }
+
+  if ($modeunest == 'single') {
+    $svarunset = _custom_links_config('singlemode', 'unset', $node->type);
+      foreach ($svarunset as $svar) {
+        unset($links[$svar]);
+      }
+  }
+}
+
+/**
+ * Implementation Hook_preprocess_node()
+ */
+function custom_links_preprocess_node(&$variables) {
+
+  // check size of variable. if  is > =  1 is an Array
+  if (($chks = sizeof($variables['custom_links']['extvar'])) >=  1) {
+    //if  is an array we can use rhis function - array_keys - to extract key
+    $keys = array_keys($variables['custom_links']['extvar']);
+      //loop to process and creato new variable
+      foreach ($keys as $key) {
+        //make new variable with standard pattern name
+        $variables['links_' . $key] = _htmproc($variables['custom_links']['extvar'][$key]);
+        //unset variable,  is not essencial but clear the nodeObject
+        unset($variables['custom_links']['extvar'][$key]);
+        //print_r($variables['links_' . $key]); //debug
+      }
+  }
+  
+  return $variables;
+}
+
+/**
+ * Custom function to render link or  not link output
+ */
+function _htmproc($inh) {
+  //check if  is a link
+  if (!(isset($inh['href']))) {
+    //is not link print only title text
+    return $inh['title'];
+  }
+
+  $output = l($inh['title'],  $inh['href'],  $inh);
+  return $output;
+}
+
+/**
+ * Custom function/intarface to "ask" changes, with this you can add featur without
+ * change oleder feature of "links hack" features adding
+ */
+function _custom_links_config($ask, $act, $cnode) {
+  
+  $output = array(); //variable to output
+  
+  //check "ask" variable
+  //Idea: same function of different output, respond to "how do you asking?"
+  if ($ask == 'mode') {
+    $ifbulk = variable_get('custom_links_' . $act . '_bulkmode', '');
+      if ($ifbulk[$cnode] == '0') {
+        $modeout = 'single';
+      }
+      if ($ifbulk[$cnode]!= '0') {
+        $modeout = 'bulk';
+      }
+    $output = $modeout;
+  }
+  
+  if ($ask == 'singlemode') {
+    $str = variable_get('custom_links_' . $act . '_' . $ask . '_' . $cnode, '');
+    $order   = array("\r\n", "\n", "\r", " ", ", ");
+    $replace = ',';
+    $cleanstr= str_replace($order, $replace, $str);    
+            
+    $ifbulk = explode(',', $cleanstr);
+    $output = $ifbulk;
+  }
+  
+  return $output;
+}
+//END LINKS HACK MODULE
+
